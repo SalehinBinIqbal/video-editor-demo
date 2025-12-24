@@ -494,26 +494,18 @@ export function Preview({
         {/* Play/Pause Overlay Button */}
         <button
           onClick={togglePlay}
-          className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 hover:opacity-100 transition-opacity duration-200 group z-200 cursor-pointer"
+          className={`absolute inset-0 flex items-center justify-center bg-black/20 ${
+            isPlaying ? "opacity-0" : "opacity-100"
+          } transition-opacity duration-200 group z-20 cursor-pointer`}
           aria-label={isPlaying ? "Pause" : "Play"}
         >
-          {isPlaying ? (
-            <svg
-              className="w-20 h-20 text-white drop-shadow-lg"
-              fill="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-            </svg>
-          ) : (
-            <svg
-              className="w-20 h-20 text-white drop-shadow-lg"
-              fill="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path d="M8 5v14l11-7z" />
-            </svg>
-          )}
+          <svg
+            className="w-20 h-20 text-white drop-shadow-lg"
+            fill="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path d="M8 5v14l11-7z" />
+          </svg>
         </button>
 
         {/* Current Clip Indicator */}

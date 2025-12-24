@@ -101,6 +101,7 @@ export function Preview({
   const pendingSeekTimeRef = useRef<number | null>(null);
   const isPlayingRef = useRef(isPlaying);
   const isTransitioningRef = useRef(false);
+  const hasEndedRef = useRef(false);
 
   // Get current video ref based on activeVideo state
   const videoRef = activeVideo === "A" ? videoARef : videoBRef;
@@ -253,6 +254,16 @@ export function Preview({
     if (isLoadingClip) return;
 
     if (isPlaying) {
+      // If we're at the end and trying to play, restart from beginning
+      if (hasEndedRef.current) {
+        hasEndedRef.current = false;
+        setCurrentClipIndex(0);
+        loadClip(0, 0, true);
+        onTimeUpdate(0);
+        lastGlobalTimeRef.current = 0;
+        return;
+      }
+
       const playPromise = activeVideoEl.play();
       if (playPromise !== undefined) {
         playPromise.catch((error) => {
@@ -265,7 +276,15 @@ export function Preview({
     } else {
       activeVideoEl.pause();
     }
-  }, [isPlaying, currentClip, isLoadingClip, onPause, activeVideo]);
+  }, [
+    isPlaying,
+    currentClip,
+    isLoadingClip,
+    onPause,
+    activeVideo,
+    loadClip,
+    onTimeUpdate,
+  ]);
 
   // Sync volume and muted state with both video elements
   useEffect(() => {
@@ -308,7 +327,8 @@ export function Preview({
       const nextClipStart = getClipStartTime(clips, nextIndex);
       onTimeUpdate(nextClipStart);
     } else {
-      // All clips finished
+      // All clips finished - mark as ended
+      hasEndedRef.current = true;
       onEnded();
     }
   }, [currentClipIndex, clips, onTimeUpdate, onEnded, loadClip]);
@@ -318,6 +338,9 @@ export function Preview({
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newGlobalTime = parseFloat(e.target.value);
       lastGlobalTimeRef.current = newGlobalTime;
+
+      // Clear ended flag when seeking
+      hasEndedRef.current = false;
 
       const { clipIndex, localTime } = getClipAtTime(clips, newGlobalTime);
       const activeVideoEl =

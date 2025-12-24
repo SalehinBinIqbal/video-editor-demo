@@ -530,6 +530,7 @@ const handleSeek = () => {
 ### Video Playback Reliability Fixes (Dec 2025)
 
 **Problems:** Multiple playback issues were affecting user experience:
+
 1. Video wouldn't play on initial page load when clicking play button
 2. Seeking to different clips with same source would cause video to get stuck
 3. Video playback would stop when seeking between clips while playing
@@ -545,6 +546,7 @@ const handleSeek = () => {
 **Solutions Implemented:**
 
 **1. Dual Event Listeners for Reliability**
+
 ```typescript
 // Listen to both loadedmetadata and canplay
 videoA?.addEventListener("loadedmetadata", handlerA);
@@ -557,6 +559,7 @@ if (videoA && videoA.readyState >= 1 && activeVideo === "A") {
 ```
 
 **2. Same-Source Optimization**
+
 ```typescript
 // Detect same source and avoid reload
 const currentSrc = clips[currentClipIndex]?.src;
@@ -573,15 +576,17 @@ if (currentSrc === newSrc && activeVideoEl) {
 ```
 
 **3. Improved Pending Play Logic**
+
 ```typescript
 // In loadClip function
 pendingPlayRef.current = shouldPlay || isPlayingRef.current;
 
-// Ensures playback resumes even if shouldPlay is false 
+// Ensures playback resumes even if shouldPlay is false
 // but video was already playing
 ```
 
 **4. Self-Correcting State Management**
+
 ```typescript
 // In play effect
 if (isLoadingClip && isVideoReady) {

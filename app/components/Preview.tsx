@@ -161,7 +161,7 @@ export function Preview({
       // Standard loading (for seeking or when preload not ready)
       setIsLoadingClip(true);
       pendingSeekTimeRef.current = seekToLocalTime;
-      pendingPlayRef.current = shouldPlay;
+      pendingPlayRef.current = shouldPlay || isPlayingRef.current;
 
       currentVideoEl.pause();
       currentVideoEl.src = clips[clipIndex].src;
@@ -191,7 +191,7 @@ export function Preview({
 
   // Handle loadedmetadata event for both video elements
   useEffect(() => {
-    const handleLoadedMetadata = (video: HTMLVideoElement) => {
+    const handleVideoReady = (video: HTMLVideoElement) => {
       // Only handle for the active video element
       const isActiveVideo =
         (activeVideo === "A" && video === videoARef.current) ||
@@ -221,15 +221,28 @@ export function Preview({
     const videoA = videoARef.current;
     const videoB = videoBRef.current;
 
-    const handlerA = () => videoA && handleLoadedMetadata(videoA);
-    const handlerB = () => videoB && handleLoadedMetadata(videoB);
+    const handlerA = () => videoA && handleVideoReady(videoA);
+    const handlerB = () => videoB && handleVideoReady(videoB);
 
+    // Listen to both loadedmetadata and canplay for reliability
     videoA?.addEventListener("loadedmetadata", handlerA);
+    videoA?.addEventListener("canplay", handlerA);
     videoB?.addEventListener("loadedmetadata", handlerB);
+    videoB?.addEventListener("canplay", handlerB);
+
+    // If video is already loaded (readyState >= 1), manually trigger the handler
+    if (videoA && videoA.readyState >= 1 && activeVideo === "A") {
+      handleVideoReady(videoA);
+    }
+    if (videoB && videoB.readyState >= 1 && activeVideo === "B") {
+      handleVideoReady(videoB);
+    }
 
     return () => {
       videoA?.removeEventListener("loadedmetadata", handlerA);
+      videoA?.removeEventListener("canplay", handlerA);
       videoB?.removeEventListener("loadedmetadata", handlerB);
+      videoB?.removeEventListener("canplay", handlerB);
     };
   }, [activeVideo]);
 
@@ -250,8 +263,29 @@ export function Preview({
       activeVideo === "A" ? videoARef.current : videoBRef.current;
     if (!activeVideoEl || !currentClip) return;
 
-    // Skip if still loading - the loadedmetadata handler will take care of it
-    if (isLoadingClip) return;
+    // Check if video is ready by checking readyState directly
+    const isVideoReady = activeVideoEl.readyState >= 2;
+
+    // If we're in loading state but video is actually ready, fix the state
+    if (isLoadingClip && isVideoReady) {
+      setIsLoadingClip(false);
+      // Continue to play logic below
+    } else if (isLoadingClip) {
+      // Video not ready yet, set pending play flag
+      if (isPlaying) {
+        pendingPlayRef.current = true;
+      }
+      return;
+    }
+
+    // Skip if video is not ready yet
+    if (!isVideoReady) {
+      // Set pending play flag so canplay handler will play when ready
+      if (isPlaying) {
+        pendingPlayRef.current = true;
+      }
+      return;
+    }
 
     if (isPlaying) {
       // If we're at the end and trying to play, restart from beginning
@@ -353,9 +387,27 @@ export function Preview({
       if (clipIndex === currentClipIndex && activeVideoEl && !isLoadingClip) {
         activeVideoEl.currentTime = localTime;
       } else if (clipIndex !== currentClipIndex) {
-        // Different clip - load it and seek to the correct position
-        setCurrentClipIndex(clipIndex);
-        loadClip(clipIndex, localTime, isPlaying);
+        // Check if the source is the same (optimization for same video files)
+        const currentSrc = clips[currentClipIndex]?.src;
+        const newSrc = clips[clipIndex]?.src;
+
+        if (currentSrc === newSrc && activeVideoEl) {
+          // Same source, just seek to the correct position without reloading
+          setCurrentClipIndex(clipIndex);
+          activeVideoEl.currentTime = localTime;
+          // If playing, continue playing
+          if (isPlaying) {
+            activeVideoEl.play().catch((error) => {
+              if (error.name !== "AbortError") {
+                console.error("Failed to play video:", error);
+              }
+            });
+          }
+        } else {
+          // Different source - need to load new clip
+          setCurrentClipIndex(clipIndex);
+          loadClip(clipIndex, localTime, isPlaying);
+        }
       }
     },
     [

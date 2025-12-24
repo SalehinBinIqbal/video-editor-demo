@@ -527,6 +527,87 @@ const handleSeek = () => {
 
 ---
 
+### Video Playback Reliability Fixes (Dec 2025)
+
+**Problems:** Multiple playback issues were affecting user experience:
+1. Video wouldn't play on initial page load when clicking play button
+2. Seeking to different clips with same source would cause video to get stuck
+3. Video playback would stop when seeking between clips while playing
+4. `isLoadingClip` state would get stuck at `true` preventing playback
+
+**Root Causes:**
+
+1. **Event Timing Issues:** `loadedmetadata` event wouldn't fire if metadata was already loaded, leaving `isLoadingClip` stuck at `true`
+2. **Same Source Reloading:** All 7 top timeline clips use `/test.mp4`, causing unnecessary reloads when seeking between clips
+3. **Pending Play Flag:** Not properly maintained when switching between clips during playback
+4. **State Recovery:** No mechanism to self-correct when `isLoadingClip` gets out of sync with actual video state
+
+**Solutions Implemented:**
+
+**1. Dual Event Listeners for Reliability**
+```typescript
+// Listen to both loadedmetadata and canplay
+videoA?.addEventListener("loadedmetadata", handlerA);
+videoA?.addEventListener("canplay", handlerA);
+
+// Check if already loaded and manually trigger handler
+if (videoA && videoA.readyState >= 1 && activeVideo === "A") {
+  handleVideoReady(videoA);
+}
+```
+
+**2. Same-Source Optimization**
+```typescript
+// Detect same source and avoid reload
+const currentSrc = clips[currentClipIndex]?.src;
+const newSrc = clips[clipIndex]?.src;
+
+if (currentSrc === newSrc && activeVideoEl) {
+  // Just seek without reloading
+  setCurrentClipIndex(clipIndex);
+  activeVideoEl.currentTime = localTime;
+  if (isPlaying) {
+    activeVideoEl.play();
+  }
+}
+```
+
+**3. Improved Pending Play Logic**
+```typescript
+// In loadClip function
+pendingPlayRef.current = shouldPlay || isPlayingRef.current;
+
+// Ensures playback resumes even if shouldPlay is false 
+// but video was already playing
+```
+
+**4. Self-Correcting State Management**
+```typescript
+// In play effect
+if (isLoadingClip && isVideoReady) {
+  setIsLoadingClip(false);
+  // Continue to play logic
+}
+```
+
+**Benefits:**
+
+- ✅ Reliable playback on initial load
+- ✅ Smooth seeking between clips with same source (no reload delay)
+- ✅ Continuous playback when seeking during video playback
+- ✅ Self-recovering from stuck loading states
+- ✅ Better handling of browser caching behavior
+- ✅ Reduced unnecessary video element reloads
+
+**Technical Details:**
+
+- Uses `readyState >= 2` to check if video has sufficient data
+- `canplay` event fires reliably when video is ready to play
+- Manual trigger check handles cases where events already fired
+- Same-source detection prevents unnecessary DOM operations
+
+---
+
 ---
 
 ## 🚀 Implementation Status
@@ -555,6 +636,7 @@ const handleSeek = () => {
 - ✅ Now playing highlight (green border with animation)
 - ✅ Seamless video transitions (dual-video preloading)
 - ✅ Playback restart logic (smart resume vs. restart behavior)
+- ✅ Video playback reliability fixes (same-source optimization, state recovery)
 
 ---
 

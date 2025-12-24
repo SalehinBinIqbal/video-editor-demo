@@ -472,6 +472,61 @@ transition-opacity: 75ms;
 
 ---
 
+### Playback Restart Logic Fix (Dec 2025)
+
+**Problem:** After the last video finished playing and playback stopped, clicking play again would resume from the last video's position instead of restarting from the beginning. This behavior was confusing as users expected the video to restart.
+
+**Root Cause:** The video player didn't distinguish between two different scenarios:
+
+1. User manually paused mid-video (should resume from pause point)
+2. All videos finished playing naturally (should restart from beginning)
+
+**Solution:** Implemented playback state tracking with `hasEndedRef` to differentiate between manual pause and natural end.
+
+**Implementation:**
+
+```typescript
+// Track whether playback has truly reached the end
+const hasEndedRef = useRef(false);
+
+// When last clip finishes naturally
+if (currentClipIndex === clips.length - 1) {
+  hasEndedRef.current = true; // Mark as ended
+  onEnded();
+}
+
+// When user clicks play
+if (isPlaying && hasEndedRef.current) {
+  // Reset to beginning if playback had ended
+  hasEndedRef.current = false;
+  setCurrentClipIndex(0);
+  loadClip(0, 0, true);
+  onTimeUpdate(0);
+}
+
+// Clear flag when seeking
+const handleSeek = () => {
+  hasEndedRef.current = false; // Allow playback to continue from seek position
+  // ...rest of seek logic
+};
+```
+
+**Behavior After Fix:**
+
+- ✅ **Manual pause mid-video → Play** → Resumes from pause point
+- ✅ **Last video ends → Play** → Restarts from the beginning
+- ✅ **Seek anywhere → Play** → Plays from seek position
+- ✅ **Natural end state persists** until user interacts (play/seek)
+
+**User Experience:**
+
+- Intuitive restart behavior when all content finishes
+- Preserves expected pause/resume functionality
+- No confusion about playback position
+- Matches behavior of professional video players
+
+---
+
 ---
 
 ## 🚀 Implementation Status
@@ -499,6 +554,7 @@ transition-opacity: 75ms;
 - ✅ Click-to-seek on timeline clips
 - ✅ Now playing highlight (green border with animation)
 - ✅ Seamless video transitions (dual-video preloading)
+- ✅ Playback restart logic (smart resume vs. restart behavior)
 
 ---
 

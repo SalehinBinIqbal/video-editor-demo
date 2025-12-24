@@ -114,6 +114,20 @@ function UploadSlot({
   if (slot.clip) {
     return (
       <div className="relative flex-1 min-w-32">
+        {/* Animated arrow pointing upward for filled slots */}
+        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center z-20">
+          <svg
+            className="w-6 h-6 text-green-500 animate-bounce"
+            fill="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path d="M12 4l-8 8h5v8h6v-8h5z" />
+          </svg>
+          {/* <div className="text-xs text-green-500 font-medium mt-1">
+            Position {slot.alignsWithPosition}
+          </div> */}
+        </div>
+
         <ClipCard
           clip={slot.clip}
           isSelected={isSelected}
@@ -126,7 +140,7 @@ function UploadSlot({
           }}
           className="absolute -top-2 -right-2 w-6 h-6 bg-red-600 hover:bg-red-700 
                    text-white rounded-full flex items-center justify-center
-                   shadow-lg z-10"
+                   shadow-lg z-10 cursor-pointer"
           aria-label="Remove clip"
         >
           <svg
@@ -160,6 +174,20 @@ function UploadSlot({
         }
       `}
     >
+      {/* Animated arrow pointing upward */}
+      <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center">
+        <svg
+          className="w-6 h-6 text-blue-500 animate-bounce"
+          fill="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path d="M12 4l-8 8h5v8h6v-8h5z" />
+        </svg>
+        {/* <div className="text-xs text-blue-500 font-medium mt-1">
+          Position {slot.alignsWithPosition}
+        </div> */}
+      </div>
+
       <input
         type="file"
         accept="video/mp4,video/webm,video/quicktime"
@@ -228,7 +256,7 @@ export function DualTimeline({
               d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
             />
           </svg>
-          Dual Timeline
+          Timeline
         </h2>
         <div className="text-sm text-gray-400">
           {topTimelineClips.length} main clips •{" "}
@@ -242,9 +270,7 @@ export function DualTimeline({
         <div>
           <div className="flex items-center gap-2 mb-3">
             <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-            <h3 className="text-sm font-semibold text-gray-300">
-              Main Timeline
-            </h3>
+            <h3 className="text-sm font-semibold text-gray-300">Source</h3>
           </div>
           <div className="flex gap-3 pb-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-800">
             {topTimelineClips.map((clip, index) => (
@@ -264,9 +290,7 @@ export function DualTimeline({
         <div>
           <div className="flex items-center gap-2 mb-3">
             <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-            <h3 className="text-sm font-semibold text-gray-300">
-              Upload Timeline
-            </h3>
+            <h3 className="text-sm font-semibold text-gray-300">Upload</h3>
           </div>
 
           {/* Upload Slots */}

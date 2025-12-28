@@ -1,6 +1,9 @@
 "use client";
 
+import { ArrowBigUp, Download, RefreshCw, Sparkles } from "lucide-react";
 import type { VideoClip, TimelineSlot } from "../types/editor";
+import { useState } from "react";
+import { DownloadModal } from "./DownloadModal";
 
 interface DualTimelineProps {
   topTimelineClips: VideoClip[];
@@ -11,6 +14,7 @@ interface DualTimelineProps {
   onSeekToClip: (clipIndex: number) => void;
   onAddToSlot: (file: File, slotIndex: number) => void;
   onRemoveFromSlot: (slotIndex: number) => void;
+  onMergedTimelineChange: (clips: VideoClip[]) => void;
   isLoading: boolean;
 }
 
@@ -116,13 +120,14 @@ function UploadSlot({
       <div className="relative flex-1 min-w-32">
         {/* Animated arrow pointing upward for filled slots */}
         <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center z-20">
-          <svg
+          {/* <svg
             className="w-6 h-6 text-green-500 animate-bounce"
             fill="currentColor"
             viewBox="0 0 24 24"
           >
             <path d="M12 4l-8 8h5v8h6v-8h5z" />
-          </svg>
+          </svg> */}
+          <ArrowBigUp className="text-green-500" />
           {/* <div className="text-xs text-green-500 font-medium mt-1">
             Position {slot.alignsWithPosition}
           </div> */}
@@ -176,13 +181,14 @@ function UploadSlot({
     >
       {/* Animated arrow pointing upward */}
       <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center">
-        <svg
+        {/* <svg
           className="w-6 h-6 text-blue-500 animate-bounce"
           fill="currentColor"
           viewBox="0 0 24 24"
         >
           <path d="M12 4l-8 8h5v8h6v-8h5z" />
-        </svg>
+        </svg> */}
+        <ArrowBigUp className="animate-bounce text-blue-500" />
         {/* <div className="text-xs text-blue-500 font-medium mt-1">
           Position {slot.alignsWithPosition}
         </div> */}
@@ -236,106 +242,321 @@ export function DualTimeline({
   onSeekToClip,
   onAddToSlot,
   onRemoveFromSlot,
+  onMergedTimelineChange,
   isLoading,
 }: DualTimelineProps) {
+  const [generateVideo, setGenerateVideo] = useState(false);
+  const [mergedTimeline, setMergedTimeline] = useState<VideoClip[]>([]);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadStatus, setDownloadStatus] = useState("");
+
+  const handleGenerateVideo = () => {
+    // Create a merged timeline where uploaded videos replace source videos at indicated positions
+    const merged = topTimelineClips.map((clip, index) => {
+      // Find if there's an uploaded video for this position
+      const slot = bottomTimelineSlots.find(
+        (s) => s.clip && s.alignsWithPosition === index + 1
+      );
+
+      // If there's an uploaded video for this position, use it; otherwise use the original
+      return slot?.clip || clip;
+    });
+
+    setMergedTimeline(merged);
+    setGenerateVideo(true);
+    onMergedTimelineChange(merged);
+  };
+
+  const handleDownload = async () => {
+    setIsDownloading(true);
+    setDownloadProgress(0);
+    setDownloadStatus("Preparing video...");
+
+    try {
+      // Create a canvas to draw video frames
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Could not get canvas context");
+
+      // Set canvas dimensions (use first video's dimensions)
+      const firstVideo = document.createElement("video");
+      firstVideo.src = mergedTimeline[0].src;
+      await new Promise((resolve) => {
+        firstVideo.onloadedmetadata = resolve;
+      });
+
+      canvas.width = firstVideo.videoWidth;
+      canvas.height = firstVideo.videoHeight;
+
+      setDownloadStatus("Loading videos...");
+      setDownloadProgress(10);
+
+      // Load all video elements
+      const videoElements = await Promise.all(
+        mergedTimeline.map(async (clip) => {
+          const video = document.createElement("video");
+          video.src = clip.src;
+          video.crossOrigin = "anonymous";
+          await new Promise((resolve) => {
+            video.onloadedmetadata = resolve;
+          });
+          return video;
+        })
+      );
+
+      setDownloadStatus("Encoding video...");
+      setDownloadProgress(30);
+
+      // Create MediaRecorder to capture canvas
+      const stream = canvas.captureStream(30); // 30 fps
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: "video/webm;codecs=vp9",
+        videoBitsPerSecond: 2500000,
+      });
+
+      const chunks: Blob[] = [];
+      mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+
+      const recordingPromise = new Promise<Blob>((resolve) => {
+        mediaRecorder.onstop = () => {
+          resolve(new Blob(chunks, { type: "video/webm" }));
+        };
+      });
+
+      mediaRecorder.start();
+
+      // Play through each video and capture frames
+      let totalDuration = 0;
+      for (const clip of mergedTimeline) {
+        totalDuration += clip.duration;
+      }
+
+      let currentTime = 0;
+      for (let i = 0; i < videoElements.length; i++) {
+        const video = videoElements[i];
+
+        setDownloadStatus(
+          `Processing clip ${i + 1}/${videoElements.length}...`
+        );
+
+        await new Promise<void>((resolve) => {
+          video.currentTime = 0;
+          video.play();
+
+          const drawFrame = () => {
+            if (video.paused || video.ended) {
+              resolve();
+              return;
+            }
+
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Update progress
+            currentTime =
+              mergedTimeline
+                .slice(0, i)
+                .reduce((sum, c) => sum + c.duration, 0) + video.currentTime;
+            const progress = 30 + (currentTime / totalDuration) * 60;
+            setDownloadProgress(Math.min(progress, 90));
+
+            requestAnimationFrame(drawFrame);
+          };
+
+          video.onended = () => {
+            resolve();
+          };
+
+          drawFrame();
+        });
+
+        video.pause();
+      }
+
+      mediaRecorder.stop();
+      setDownloadStatus("Finalizing...");
+      setDownloadProgress(95);
+
+      const blob = await recordingPromise;
+
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `merged_video_${Date.now()}.webm`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setDownloadStatus("Complete!");
+      setDownloadProgress(100);
+
+      // Auto-close modal after 2 seconds
+      setTimeout(() => {
+        setIsDownloading(false);
+      }, 2000);
+    } catch (error) {
+      console.error("Error downloading video:", error);
+      setDownloadStatus("Error occurred. Please try again.");
+      setTimeout(() => {
+        setIsDownloading(false);
+      }, 2000);
+    }
+  };
+
   return (
-    <div className="w-full bg-gray-900 rounded-lg overflow-hidden shadow-lg">
-      {/* Header */}
-      <div className="bg-gray-800 px-4 py-3 border-b border-gray-700 flex items-center justify-between">
-        <h2 className="text-white font-semibold flex items-center gap-2">
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
-            />
-          </svg>
-          Timeline
-        </h2>
-        <div className="text-sm text-gray-400">
-          {topTimelineClips.length} main clips •{" "}
-          {bottomTimelineSlots.filter((s) => s.clip).length}/3 uploads
-        </div>
-      </div>
-
-      {/* Timeline Content */}
-      <div className="p-4 space-y-6 overflow-x-auto">
-        {/* Top Timeline - Main Videos */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-            <h3 className="text-sm font-semibold text-gray-300">Source</h3>
-          </div>
-          <div className="flex gap-3 pb-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-800">
-            {topTimelineClips.map((clip, index) => (
-              <ClipCard
-                key={`top-${clip.id}`}
-                clip={clip}
-                isSelected={clip.id === selectedClipId}
-                isPlaying={index === currentPlayingIndex}
-                onSelect={() => onSeekToClip(index)}
-                position={index + 1}
+    <>
+      <div className="w-full bg-gray-900 rounded-lg overflow-hidden shadow-lg">
+        {/* Header */}
+        <div className="bg-gray-800 px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+          <h2 className="text-white font-semibold flex items-center gap-2">
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
               />
-            ))}
+            </svg>
+            Timeline
+          </h2>
+          <div className="text-sm text-gray-400">
+            {topTimelineClips.length} main clips •{" "}
+            {bottomTimelineSlots.filter((s) => s.clip).length}/3 uploads
           </div>
         </div>
 
-        {/* Bottom Timeline - Upload Slots */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-            <h3 className="text-sm font-semibold text-gray-300">Upload</h3>
-          </div>
-
-          {/* Upload Slots */}
-          <div className="relative flex gap-3 pb-8">
-            {topTimelineClips.map((_, index) => {
-              const slot = bottomTimelineSlots.find(
-                (s) => s.alignsWithPosition === index + 1
-              );
-
-              if (slot) {
-                return (
-                  <UploadSlot
-                    key={`slot-${slot.index}`}
-                    slot={slot}
-                    onUpload={(file) => onAddToSlot(file, slot.index)}
-                    onRemove={() => onRemoveFromSlot(slot.index)}
-                    isSelected={slot.clip?.id === selectedClipId}
-                    onSelect={() => slot.clip && onSelectClip(slot.clip.id)}
-                    isLoading={isLoading}
+        {/* Timeline Content */}
+        <div className="p-4 space-y-6 overflow-x-auto">
+          {/* Top Timeline - Main Videos */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <h3 className="text-sm font-semibold text-gray-300">
+                {generateVideo ? "Generated Video" : "Source"}
+              </h3>
+            </div>
+            <div className="flex gap-3 pb-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-800">
+              {(generateVideo ? mergedTimeline : topTimelineClips).map(
+                (clip, index) => (
+                  <ClipCard
+                    key={`top-${clip.id}`}
+                    clip={clip}
+                    isSelected={clip.id === selectedClipId}
+                    isPlaying={index === currentPlayingIndex}
+                    onSelect={() => onSeekToClip(index)}
+                    position={index + 1}
                   />
-                );
-              }
-
-              return (
-                <div key={`empty-${index}`} className="flex-1 min-w-32 h-20" />
-              );
-            })}
+                )
+              )}
+            </div>
           </div>
+
+          {/* Bottom Timeline - Upload Slots */}
+          {!generateVideo && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                <h3 className="text-sm font-semibold text-gray-300">Upload</h3>
+              </div>
+
+              {/* Upload Slots */}
+              <div className="relative flex gap-3 pb-8">
+                {topTimelineClips.map((_, index) => {
+                  const slot = bottomTimelineSlots.find(
+                    (s) => s.alignsWithPosition === index + 1
+                  );
+
+                  if (slot) {
+                    return (
+                      <UploadSlot
+                        key={`slot-${slot.index}`}
+                        slot={slot}
+                        onUpload={(file) => onAddToSlot(file, slot.index)}
+                        onRemove={() => onRemoveFromSlot(slot.index)}
+                        isSelected={slot.clip?.id === selectedClipId}
+                        onSelect={() => slot.clip && onSelectClip(slot.clip.id)}
+                        isLoading={isLoading}
+                      />
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={`empty-${index}`}
+                      className="flex-1 min-w-32 h-20"
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Instructions */}
+        <div className="bg-gray-800 px-4 py-2 border-t border-gray-700">
+          <p className="text-xs text-gray-400 flex items-center gap-2">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fillRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                clipRule="evenodd"
+              />
+            </svg>
+            Click main clips to seek • Green border = now playing • Upload
+            videos to bottom slots • Max 720p, 20MB
+          </p>
         </div>
       </div>
-
-      {/* Instructions */}
-      <div className="bg-gray-800 px-4 py-2 border-t border-gray-700">
-        <p className="text-xs text-gray-400 flex items-center gap-2">
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-            <path
-              fillRule="evenodd"
-              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-              clipRule="evenodd"
-            />
-          </svg>
-          Click main clips to seek • Green border = now playing • Upload videos
-          to bottom slots • Max 720p, 20MB
-        </p>
+      <div className="flex justify-end gap-3 mt-5">
+        {/* <button
+          disabled={true}
+          className="px-3 py-2 bg-green-700 rounded-md inline-flex items-center gap-2 hover:bg-green-800 transition cursor-pointer disabled:cursor-not-allowed disabled:bg-gray-600 disabled:opacity-50"
+        >
+          <Download size={20} />
+          Download
+        </button> */}
+        {generateVideo ? (
+          <>
+            <button
+              onClick={handleDownload}
+              className="px-3 py-2 bg-green-700 rounded-md inline-flex items-center gap-2 hover:bg-green-800 transition cursor-pointer disabled:cursor-not-allowed disabled:bg-gray-600 disabled:opacity-50"
+            >
+              <Download size={20} />
+              Download
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-3 py-2 bg-blue-700 rounded-md inline-flex items-center gap-2 hover:bg-blue-800 transition cursor-pointer disabled:cursor-not-allowed disabled:bg-gray-600 disabled:opacity-50"
+            >
+              <RefreshCw size={20} />
+              Reset
+            </button>
+          </>
+        ) : (
+          <button
+            disabled={bottomTimelineSlots.filter((s) => s.clip).length === 0}
+            onClick={handleGenerateVideo}
+            className="px-3 py-2 bg-blue-700 rounded-md inline-flex items-center gap-2 hover:bg-blue-800 transition cursor-pointer disabled:cursor-not-allowed disabled:bg-gray-600 disabled:opacity-50"
+          >
+            <Sparkles size={20} />
+            Make your own video
+          </button>
+        )}
       </div>
-    </div>
+
+      <DownloadModal
+        isOpen={isDownloading}
+        progress={downloadProgress}
+        status={downloadStatus}
+        onClose={() => setIsDownloading(false)}
+      />
+    </>
   );
 }

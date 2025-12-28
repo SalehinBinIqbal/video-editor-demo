@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState, useEffect } from "react";
 import { Preview } from "./components/Preview";
 import { DualTimeline } from "./components/DualTimeline";
 import { useVideoEditor } from "./hooks/useVideoEditor";
@@ -58,6 +58,20 @@ export default function Home() {
     getAllClipsForExport,
   } = useVideoEditor();
 
+  const [playbackClips, setPlaybackClips] = useState(topTimelineClips);
+
+  // Update playback clips when topTimelineClips change (initial load)
+  useEffect(() => {
+    setPlaybackClips(topTimelineClips);
+  }, [topTimelineClips]);
+
+  const handleMergedTimelineChange = useCallback(
+    (mergedClips: typeof topTimelineClips) => {
+      setPlaybackClips(mergedClips);
+    },
+    []
+  );
+
   const {
     exportVideo,
     isExporting,
@@ -66,18 +80,23 @@ export default function Home() {
     clearError: clearExportError,
   } = useExport();
 
+  // Calculate total duration based on playback clips
+  const playbackTotalDuration = useMemo(() => {
+    return playbackClips.reduce((sum, clip) => sum + clip.duration, 0);
+  }, [playbackClips]);
+
   // Calculate the currently playing clip index
   const currentPlayingIndex = useMemo(() => {
-    return getClipIndexAtTime(topTimelineClips, currentTime);
-  }, [topTimelineClips, currentTime]);
+    return getClipIndexAtTime(playbackClips, currentTime);
+  }, [playbackClips, currentTime]);
 
   // Handler to seek to the start of a specific clip
   const handleSeekToClip = useCallback(
     (clipIndex: number) => {
-      const startTime = getClipStartTime(topTimelineClips, clipIndex);
+      const startTime = getClipStartTime(playbackClips, clipIndex);
       seek(startTime);
     },
-    [topTimelineClips, seek]
+    [playbackClips, seek]
   );
 
   const handleExport = async () => {
@@ -199,10 +218,10 @@ export default function Home() {
         {/* Preview Section */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-6">
           <Preview
-            clips={topTimelineClips}
+            clips={playbackClips}
             isPlaying={isPlaying}
             globalTime={currentTime}
-            totalDuration={totalDuration}
+            totalDuration={playbackTotalDuration}
             onTimeUpdate={seek}
             onEnded={handleEnded}
             onPlay={play}
@@ -221,6 +240,7 @@ export default function Home() {
             onSeekToClip={handleSeekToClip}
             onAddToSlot={addClipToSlot}
             onRemoveFromSlot={removeClipFromSlot}
+            onMergedTimelineChange={handleMergedTimelineChange}
             isLoading={isLoading}
           />
         </div>

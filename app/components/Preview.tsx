@@ -102,6 +102,7 @@ export function Preview({
   const isPlayingRef = useRef(isPlaying);
   const isTransitioningRef = useRef(false);
   const hasEndedRef = useRef(false);
+  const previousClipsRef = useRef(clips);
 
   // Get current video ref based on activeVideo state
   const videoRef = activeVideo === "A" ? videoARef : videoBRef;
@@ -319,6 +320,36 @@ export function Preview({
     loadClip,
     onTimeUpdate,
   ]);
+
+  // Detect when clips array changes (e.g., merged timeline applied)
+  useEffect(() => {
+    // Check if clips array has actually changed
+    if (previousClipsRef.current !== clips && clips.length > 0) {
+      previousClipsRef.current = clips;
+
+      // Reset to beginning
+      setCurrentClipIndex(0);
+      hasEndedRef.current = false;
+      lastGlobalTimeRef.current = 0;
+
+      // IMPORTANT: Update the ref immediately to prevent race conditions
+      isPlayingRef.current = false;
+
+      // Pause both video elements immediately
+      if (videoARef.current) {
+        videoARef.current.pause();
+      }
+      if (videoBRef.current) {
+        videoBRef.current.pause();
+      }
+
+      onTimeUpdate(0);
+      onPause();
+
+      // Load first clip in paused state
+      loadClip(0, 0, false);
+    }
+  }, [clips, onTimeUpdate, onPause, loadClip]);
 
   // Sync volume and muted state with both video elements
   useEffect(() => {

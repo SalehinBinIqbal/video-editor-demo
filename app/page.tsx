@@ -242,6 +242,7 @@ export default function Home() {
             onRemoveFromSlot={removeClipFromSlot}
             onMergedTimelineChange={handleMergedTimelineChange}
             isLoading={isLoading}
+            onPause={pause}
           />
         </div>
 

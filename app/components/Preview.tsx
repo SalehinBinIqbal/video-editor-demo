@@ -127,6 +127,11 @@ export function Preview({
 
       if (!currentVideoEl || !clips[clipIndex]) return;
 
+      // If explicitly told not to play, clear the pending play flag
+      if (!shouldPlay) {
+        pendingPlayRef.current = false;
+      }
+
       // Check if next video is preloaded and ready (only for auto-advance at start of clip)
       if (
         seekToLocalTime === 0 &&
@@ -145,7 +150,8 @@ export function Preview({
         nextVideoEl.volume = volume;
         nextVideoEl.muted = isMuted;
 
-        if (shouldPlay || isPlayingRef.current) {
+        // Only auto-play if shouldPlay is true (explicit request to play)
+        if (shouldPlay) {
           nextVideoEl.play().catch((error) => {
             if (error.name !== "AbortError") {
               console.error("Failed to play video:", error);
@@ -163,7 +169,8 @@ export function Preview({
       // Standard loading (for seeking or when preload not ready)
       setIsLoadingClip(true);
       pendingSeekTimeRef.current = seekToLocalTime;
-      pendingPlayRef.current = shouldPlay || isPlayingRef.current;
+      // Only set pending play if explicitly requested
+      pendingPlayRef.current = shouldPlay;
 
       currentVideoEl.pause();
       currentVideoEl.src = clips[clipIndex].src;
@@ -209,8 +216,9 @@ export function Preview({
 
       setIsLoadingClip(false);
 
-      // Resume playing if it was pending or if isPlaying is currently true
-      if (pendingPlayRef.current || isPlayingRef.current) {
+      // Only resume playing if pendingPlayRef was explicitly set to true
+      // Do NOT check isPlayingRef here to avoid race conditions
+      if (pendingPlayRef.current) {
         pendingPlayRef.current = false;
         video.play().catch((error) => {
           if (error.name !== "AbortError") {

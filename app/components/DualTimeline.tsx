@@ -18,6 +18,7 @@ interface DualTimelineProps {
   onRemoveFromSlot: (slotIndex: number) => void;
   onMergedTimelineChange: (clips: VideoClip[]) => void;
   isLoading: boolean;
+  onPause?: () => void;
 }
 
 /**
@@ -246,6 +247,7 @@ export function DualTimeline({
   onRemoveFromSlot,
   onMergedTimelineChange,
   isLoading,
+  onPause,
 }: DualTimelineProps) {
   const [generateVideo, setGenerateVideo] = useState(false);
   const [mergedTimeline, setMergedTimeline] = useState<VideoClip[]>([]);
@@ -257,6 +259,10 @@ export function DualTimeline({
   const ffmpegRef = useRef<FFmpeg | null>(null);
 
   const handleGenerateVideo = () => {
+    // Stop playback and seek to beginning first
+    onPause?.();
+    onSeekToClip(0);
+
     // Create a merged timeline where uploaded videos replace source videos at indicated positions
     const merged = topTimelineClips.map((clip, index) => {
       // Find if there's an uploaded video for this position
@@ -312,6 +318,10 @@ export function DualTimeline({
   };
 
   const handleDownload = async () => {
+    // Stop playback and seek to beginning before downloading
+    onPause?.();
+    onSeekToClip(0);
+
     setIsDownloading(true);
     setDownloadProgress(0);
     setDownloadStatus("Preparing video");

@@ -2,8 +2,10 @@
 
 import { ArrowBigUp, Download, RefreshCw, Sparkles } from "lucide-react";
 import type { VideoClip, TimelineSlot } from "../types/editor";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { DownloadModal } from "./DownloadModal";
+import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { fetchFile, toBlobURL } from "@ffmpeg/util";
 
 interface DualTimelineProps {
   topTimelineClips: VideoClip[];
@@ -250,6 +252,7 @@ export function DualTimeline({
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadStatus, setDownloadStatus] = useState("");
+  const ffmpegRef = useRef<FFmpeg | null>(null);
 
   const handleGenerateVideo = () => {
     // Create a merged timeline where uploaded videos replace source videos at indicated positions
@@ -268,122 +271,131 @@ export function DualTimeline({
     onMergedTimelineChange(merged);
   };
 
+  const loadFFmpeg = async (): Promise<FFmpeg> => {
+    if (ffmpegRef.current) {
+      return ffmpegRef.current;
+    }
+
+    const ffmpeg = new FFmpeg();
+
+    ffmpeg.on("log", ({ message }) => {
+      console.log("[FFmpeg]", message);
+    });
+
+    ffmpeg.on("progress", ({ progress: prog }) => {
+      const currentProgress = Math.round(prog * 100);
+      setDownloadProgress(Math.min(25 + currentProgress * 0.65, 90));
+    });
+
+    try {
+      setDownloadStatus("Loading video processor...");
+      const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
+      await ffmpeg.load({
+        coreURL: await toBlobURL(
+          `${baseURL}/ffmpeg-core.js`,
+          "text/javascript"
+        ),
+        wasmURL: await toBlobURL(
+          `${baseURL}/ffmpeg-core.wasm`,
+          "application/wasm"
+        ),
+      });
+
+      ffmpegRef.current = ffmpeg;
+      return ffmpeg;
+    } catch (error) {
+      console.error("Failed to load FFmpeg:", error);
+      throw new Error("Failed to initialize video processor");
+    }
+  };
+
   const handleDownload = async () => {
     setIsDownloading(true);
     setDownloadProgress(0);
     setDownloadStatus("Preparing video...");
 
     try {
-      // Create a canvas to draw video frames
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Could not get canvas context");
+      const ffmpeg = await loadFFmpeg();
+      setDownloadProgress(5);
 
-      // Set canvas dimensions (use first video's dimensions)
-      const firstVideo = document.createElement("video");
-      firstVideo.src = mergedTimeline[0].src;
-      await new Promise((resolve) => {
-        firstVideo.onloadedmetadata = resolve;
-      });
-
-      canvas.width = firstVideo.videoWidth;
-      canvas.height = firstVideo.videoHeight;
-
-      setDownloadStatus("Loading videos...");
-      setDownloadProgress(10);
-
-      // Load all video elements
-      const videoElements = await Promise.all(
-        mergedTimeline.map(async (clip) => {
-          const video = document.createElement("video");
-          video.src = clip.src;
-          video.crossOrigin = "anonymous";
-          await new Promise((resolve) => {
-            video.onloadedmetadata = resolve;
-          });
-          return video;
-        })
-      );
-
-      setDownloadStatus("Encoding video...");
-      setDownloadProgress(30);
-
-      // Create MediaRecorder to capture canvas
-      const stream = canvas.captureStream(30); // 30 fps
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "video/webm;codecs=vp9",
-        videoBitsPerSecond: 2500000,
-      });
-
-      const chunks: Blob[] = [];
-      mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-
-      const recordingPromise = new Promise<Blob>((resolve) => {
-        mediaRecorder.onstop = () => {
-          resolve(new Blob(chunks, { type: "video/webm" }));
-        };
-      });
-
-      mediaRecorder.start();
-
-      // Play through each video and capture frames
-      let totalDuration = 0;
-      for (const clip of mergedTimeline) {
-        totalDuration += clip.duration;
-      }
-
-      let currentTime = 0;
-      for (let i = 0; i < videoElements.length; i++) {
-        const video = videoElements[i];
-
-        setDownloadStatus(
-          `Processing clip ${i + 1}/${videoElements.length}...`
+      // Write all video files to FFmpeg virtual filesystem
+      setDownloadStatus("Loading video files...");
+      for (let i = 0; i < mergedTimeline.length; i++) {
+        const clip = mergedTimeline[i];
+        setDownloadProgress(
+          5 + Math.round(((i + 1) / mergedTimeline.length) * 15)
         );
 
-        await new Promise<void>((resolve) => {
-          video.currentTime = 0;
-          video.play();
-
-          const drawFrame = () => {
-            if (video.paused || video.ended) {
-              resolve();
-              return;
-            }
-
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            // Update progress
-            currentTime =
-              mergedTimeline
-                .slice(0, i)
-                .reduce((sum, c) => sum + c.duration, 0) + video.currentTime;
-            const progress = 30 + (currentTime / totalDuration) * 60;
-            setDownloadProgress(Math.min(progress, 90));
-
-            requestAnimationFrame(drawFrame);
-          };
-
-          video.onended = () => {
-            resolve();
-          };
-
-          drawFrame();
-        });
-
-        video.pause();
+        const videoData = await fetchFile(clip.src);
+        await ffmpeg.writeFile(`input${i}.mp4`, videoData);
       }
 
-      mediaRecorder.stop();
-      setDownloadStatus("Finalizing...");
+      setDownloadProgress(25);
+      setDownloadStatus("Encoding videos...");
+
+      // Re-encode all videos to the same format for smooth concatenation
+      for (let i = 0; i < mergedTimeline.length; i++) {
+        await ffmpeg.exec([
+          "-i",
+          `input${i}.mp4`,
+          "-c:v",
+          "libx264",
+          "-preset",
+          "ultrafast",
+          "-crf",
+          "23",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-ar",
+          "44100",
+          "-r",
+          "30",
+          "-pix_fmt",
+          "yuv420p",
+          "-movflags",
+          "+faststart",
+          `temp${i}.mp4`,
+        ]);
+      }
+
+      // Create concat list file
+      const concatList = mergedTimeline
+        .map((_, i) => `file 'temp${i}.mp4'`)
+        .join("\n");
+      await ffmpeg.writeFile("concat.txt", concatList);
+
+      setDownloadStatus("Merging videos...");
+      setDownloadProgress(90);
+
+      // Concatenate videos
+      await ffmpeg.exec([
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        "concat.txt",
+        "-c",
+        "copy",
+        "output.mp4",
+      ]);
+
       setDownloadProgress(95);
+      setDownloadStatus("Finalizing...");
 
-      const blob = await recordingPromise;
+      // Read the output file
+      const data = await ffmpeg.readFile("output.mp4");
+      const blob = new Blob([new Uint8Array(data as Uint8Array)], {
+        type: "video/mp4",
+      });
 
-      // Create download link
+      // Download the file
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `merged_video_${Date.now()}.webm`;
+      link.download = `merged_video_${Date.now()}.mp4`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -391,6 +403,22 @@ export function DualTimeline({
 
       setDownloadStatus("Complete!");
       setDownloadProgress(100);
+
+      // Cleanup FFmpeg filesystem
+      for (let i = 0; i < mergedTimeline.length; i++) {
+        try {
+          await ffmpeg.deleteFile(`input${i}.mp4`);
+          await ffmpeg.deleteFile(`temp${i}.mp4`);
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
+      try {
+        await ffmpeg.deleteFile("concat.txt");
+        await ffmpeg.deleteFile("output.mp4");
+      } catch (e) {
+        // Ignore cleanup errors
+      }
 
       // Auto-close modal after 2 seconds
       setTimeout(() => {
@@ -401,7 +429,7 @@ export function DualTimeline({
       setDownloadStatus("Error occurred. Please try again.");
       setTimeout(() => {
         setIsDownloading(false);
-      }, 2000);
+      }, 3000);
     }
   };
 

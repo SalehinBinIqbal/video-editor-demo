@@ -9,13 +9,13 @@ import type {
 
 // Top timeline: 7 fixed dummy videos
 const TOP_TIMELINE_VIDEOS = [
-  "/test.mp4", // Position 1
-  "/test.mp4", // Position 2
-  "/test.mp4", // Position 3
-  "/test.mp4", // Position 4
-  "/test.mp4", // Position 5
-  "/test.mp4", // Position 6
-  "/test.mp4", // Position 7
+  "/test4.mp4", // Position 1
+  "/test4.mp4", // Position 2
+  "/test4.mp4", // Position 3
+  "/test4.mp4", // Position 4
+  "/test4.mp4", // Position 5
+  "/test4.mp4", // Position 6
+  "/test4.mp4", // Position 7
 ];
 
 // Bottom timeline: 3 slots aligning with positions 2, 4, 6
@@ -29,7 +29,7 @@ const BOTTOM_TIMELINE_SLOTS = [
  * Validates a video file against constraints
  */
 async function validateVideo(file: File): Promise<ValidationResult> {
-  const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+  const MAX_FILE_SIZE = 100 * 1024 * 1024; // 20MB
   const MIN_WIDTH = 1280;
   const MIN_HEIGHT = 720;
   const ALLOWED_TYPES = ["video/mp4", "video/webm", "video/quicktime"];

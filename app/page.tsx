@@ -111,7 +111,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       {/* Header */}
-      <header className="bg-gray-900 border-b border-gray-800 shadow-lg">
+      {/* <header className="bg-gray-900 border-b border-gray-800 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -169,7 +169,7 @@ export default function Home() {
             </button>
           </div>
         </div>
-      </header>
+      </header> */}
 
       {/* Main Content */}
       <main className="w-full px-0 py-8">

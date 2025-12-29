@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback } from "react";
 import type { VideoClip } from "../types/editor";
+import { FileVideoCamera, Play } from "lucide-react";
 
 interface PreviewProps {
   /** All clips in the main timeline to play sequentially */
@@ -477,7 +478,7 @@ export function Preview({
       <div className="w-full bg-gray-900 rounded-lg overflow-hidden shadow-lg">
         <div className="aspect-video flex items-center justify-center text-gray-400">
           <div className="text-center">
-            <svg
+            {/* <svg
               className="w-16 h-16 mx-auto mb-4 opacity-50"
               fill="none"
               stroke="currentColor"
@@ -489,7 +490,8 @@ export function Preview({
                 strokeWidth={2}
                 d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
               />
-            </svg>
+            </svg> */}
+            <FileVideoCamera size={64} className="opacity-50 mb-4 mx-auto" />
             <p className="text-lg">Loading videos...</p>
           </div>
         </div>
@@ -525,18 +527,19 @@ export function Preview({
         {/* Play/Pause Overlay Button */}
         <button
           onClick={togglePlay}
-          className={`absolute inset-0 flex items-center justify-center bg-black/20 ${
+          className={`absolute inset-0 flex items-center justify-center bg-black/30 ${
             isPlaying ? "opacity-0" : "opacity-100"
           } transition-opacity duration-200 group z-20 cursor-pointer`}
           aria-label={isPlaying ? "Pause" : "Play"}
         >
-          <svg
+          {/* <svg
             className="w-20 h-20 text-white drop-shadow-lg"
             fill="currentColor"
             viewBox="0 0 24 24"
           >
             <path d="M8 5v14l11-7z" />
-          </svg>
+          </svg> */}
+          <Play size={60} className="drop-shadow-lg" />
         </button>
 
         {/* Current Clip Indicator */}

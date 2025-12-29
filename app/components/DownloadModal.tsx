@@ -1,12 +1,16 @@
 "use client";
 
-import { X } from "lucide-react";
+import { Circle, X } from "lucide-react";
+
+import classes from "./faltu.module.css";
 
 interface DownloadModalProps {
   isOpen: boolean;
   progress: number;
   status: string;
   onClose: () => void;
+  currentVideo?: number;
+  totalVideos?: number;
 }
 
 export function DownloadModal({
@@ -14,6 +18,8 @@ export function DownloadModal({
   progress,
   status,
   onClose,
+  currentVideo,
+  totalVideos,
 }: DownloadModalProps) {
   if (!isOpen) return null;
 
@@ -21,7 +27,12 @@ export function DownloadModal({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-gray-800 rounded-lg p-6 w-96 max-w-[90vw]">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-white font-semibold text-lg">Processing Video</h3>
+          <h3 className="text-white font-semibold text-lg">
+            Processing Video
+            {currentVideo && totalVideos
+              ? ` (${currentVideo} of ${totalVideos})`
+              : ""}
+          </h3>
           {progress === 100 && (
             <button
               onClick={onClose}
@@ -41,8 +52,37 @@ export function DownloadModal({
           </div>
 
           <div className="flex justify-between text-sm">
-            <span className="text-gray-400">{status}</span>
-            <span className="text-white font-medium">{progress}%</span>
+            <span className="text-gray-400">
+              {status === "Complete!" ? (
+                status
+              ) : (
+                <>
+                  {status}{" "}
+                  <span className="inline-flex gap-1">
+                    <Circle
+                      fill="currentColor"
+                      size={5}
+                      className="opacity-0 animate-[fadeIn_1s_ease-in-out_infinite_0.1s]"
+                    />
+                    <Circle
+                      fill="currentColor"
+                      size={5}
+                      className="opacity-0 animate-[fadeIn_1s_ease-in-out_infinite_0.2s]"
+                    />
+                    <Circle
+                      fill="currentColor"
+                      size={5}
+                      className="opacity-0 animate-[fadeIn_1s_ease-in-out_infinite_0.3s]"
+                    />
+                  </span>
+                </>
+              )}
+            </span>
+            {status === "Encoding videos" && (
+              <span className="text-white font-medium">
+                {Math.round(progress)}%
+              </span>
+            )}
           </div>
 
           {progress === 100 && (

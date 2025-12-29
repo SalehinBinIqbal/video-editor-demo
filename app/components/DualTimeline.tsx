@@ -252,6 +252,8 @@ export function DualTimeline({
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadStatus, setDownloadStatus] = useState("");
+  const [currentVideo, setCurrentVideo] = useState(0);
+  const [totalVideos, setTotalVideos] = useState(0);
   const ffmpegRef = useRef<FFmpeg | null>(null);
 
   const handleGenerateVideo = () => {
@@ -288,7 +290,7 @@ export function DualTimeline({
     });
 
     try {
-      setDownloadStatus("Loading video processor...");
+      setDownloadStatus("Loading video processor");
       const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
       await ffmpeg.load({
         coreURL: await toBlobURL(
@@ -312,14 +314,14 @@ export function DualTimeline({
   const handleDownload = async () => {
     setIsDownloading(true);
     setDownloadProgress(0);
-    setDownloadStatus("Preparing video...");
+    setDownloadStatus("Preparing video");
 
     try {
       const ffmpeg = await loadFFmpeg();
       setDownloadProgress(5);
 
       // Write all video files to FFmpeg virtual filesystem
-      setDownloadStatus("Loading video files...");
+      setDownloadStatus("Loading video files");
       for (let i = 0; i < mergedTimeline.length; i++) {
         const clip = mergedTimeline[i];
         setDownloadProgress(
@@ -331,10 +333,12 @@ export function DualTimeline({
       }
 
       setDownloadProgress(25);
-      setDownloadStatus("Encoding videos...");
+      setDownloadStatus("Encoding videos");
+      setTotalVideos(mergedTimeline.length);
 
       // Re-encode all videos to the same format for smooth concatenation
       for (let i = 0; i < mergedTimeline.length; i++) {
+        setCurrentVideo(i + 1);
         await ffmpeg.exec([
           "-i",
           `input${i}.mp4`,
@@ -366,7 +370,7 @@ export function DualTimeline({
         .join("\n");
       await ffmpeg.writeFile("concat.txt", concatList);
 
-      setDownloadStatus("Merging videos...");
+      setDownloadStatus("Merging videos");
       setDownloadProgress(90);
 
       // Concatenate videos
@@ -383,7 +387,7 @@ export function DualTimeline({
       ]);
 
       setDownloadProgress(95);
-      setDownloadStatus("Finalizing...");
+      setDownloadStatus("Finalizing");
 
       // Read the output file
       const data = await ffmpeg.readFile("output.mp4");
@@ -585,6 +589,8 @@ export function DualTimeline({
         progress={downloadProgress}
         status={downloadStatus}
         onClose={() => setIsDownloading(false)}
+        currentVideo={currentVideo}
+        totalVideos={totalVideos}
       />
     </>
   );

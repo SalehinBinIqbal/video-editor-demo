@@ -347,11 +347,14 @@ export function DualTimeline({
       setTotalVideos(mergedTimeline.length);
 
       // Re-encode all videos to the same format for smooth concatenation
+      // Scale to 720p, pad to 16:9 aspect ratio, and handle missing audio
       for (let i = 0; i < mergedTimeline.length; i++) {
         setCurrentVideo(i + 1);
         await ffmpeg.exec([
           "-i",
           `input${i}.mp4`,
+          "-vf",
+          "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:black,fps=30",
           "-c:v",
           "libx264",
           "-preset",
@@ -364,12 +367,13 @@ export function DualTimeline({
           "128k",
           "-ar",
           "44100",
-          "-r",
-          "30",
+          "-ac",
+          "2",
           "-pix_fmt",
           "yuv420p",
           "-movflags",
           "+faststart",
+          "-shortest",
           `temp${i}.mp4`,
         ]);
       }
